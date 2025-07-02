@@ -1,20 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getProductReviews,
-  createReview,
-  updateReview,
-  deleteReview
-} = require('../controllers/reviewController');
+const { createReview, getProductReviews } = require('../controllers/reviewController');
 
-const { isAuthenticatedUser } = require('../middleware/auth');
-
-// Public route
-router.get('/products/:productId/reviews', getProductReviews);
-
-// Protected routes
-router.post('/products/:productId/reviews', isAuthenticatedUser, createReview);
-router.put('/reviews/:id', isAuthenticatedUser, updateReview);
-router.delete('/reviews/:id', isAuthenticatedUser, deleteReview);
+// Anyone can post or get reviews
+router.post('/review/:productId', createReview);
+router.get('/review/:productId', getProductReviews);
 
 module.exports = router;

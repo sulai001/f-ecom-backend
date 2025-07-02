@@ -1,142 +1,84 @@
+const Review = require('../models/Review');
 const Product = require('../models/Product');
-const { ErrorResponse } = require('../middleware/error');
 
-// @desc    Get all reviews for a product
-// @route   GET /api/v1/products/:productId/reviews
-exports.getReviews = async (req, res, next) => {
-  try {
-    const product = await Product.findById(req.params.productId)
-      .select('reviews')
-      .populate('reviews.user', 'name');
-
-    if (!product) {
-      return next(new ErrorResponse('Product not found', 404));
-    }
-
-    res.status(200).json({
-      success: true,
-      count: product.reviews.length,
-      data: product.reviews
-    });
-  } catch (err) {
-    next(new ErrorResponse(err.message, 500));
-  }
-};
-
-// @desc    Get single review
-// @route   GET /api/v1/reviews/:id
-exports.getReview = async (req, res, next) => {
-  try {
-    const product = await Product.findOne({ 'reviews._id': req.params.id })
-      .select('reviews')
-      .populate('reviews.user', 'name');
-
-    if (!product) {
-      return next(new ErrorResponse('Review not found', 404));
-    }
-
-    const review = product.reviews.id(req.params.id);
-    res.status(200).json({ success: true, data: review });
-  } catch (err) {
-    next(new ErrorResponse(err.message, 500));
-  }
-};
-
-// @desc    Add review
-// @route   POST /api/v1/products/:productId/reviews
-exports.addReview = async (req, res, next) => {
+// @desc    Add a review to a product
+// @route   POST /api/reviews/:productId
+// @access  Private (requires req.user)
+exports.createReview = async (req, res, next) => {
   try {
     const { rating, comment } = req.body;
     const product = await Product.findById(req.params.productId);
 
-    if (!product) {
-      return next(new ErrorResponse('Product not found', 404));
-    }
+    if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Check if already reviewed
     const alreadyReviewed = product.reviews.find(
-      r => r.user.toString() === req.user.id
+      (r) => r.user.toString() === req.user._id.toString()
     );
 
     if (alreadyReviewed) {
-      return next(new ErrorResponse('Already reviewed this product', 400));
+      return res.status(400).json({ message: 'You already reviewed this product' });
     }
 
     const review = {
-      user: req.user.id,
-      name: req.user.name,
+      user: req.user._id,
       rating: Number(rating),
-      comment
+      comment,
     };
 
     product.reviews.push(review);
-    product.numOfReviews = product.reviews.length;
-    product.ratings = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+    product.numReviews = product.reviews.length;
+    product.rating =
+      product.reviews.reduce((acc, r) => r.rating + acc, 0) / product.reviews.length;
 
     await product.save();
-    res.status(201).json({ success: true, data: review });
+    res.status(201).json({ message: 'Review added', reviews: product.reviews });
   } catch (err) {
-    next(new ErrorResponse(err.message, 500));
+    res.status(500).json({ message: err.message });
   }
 };
 
-// @desc    Update review
-// @route   PUT /api/v1/reviews/:id
-exports.updateReview = async (req, res, next) => {
+// @desc    Get all reviews for a product
+// @route   GET /api/reviews/:productId
+// @access  Public
+exports.getProductReviews = async (req, res) => {
   try {
-    const product = await Product.findOne({ 'reviews._id': req.params.id });
+    const product = await Product.findById(req.params.productId).populate('reviews.user', 'name');
 
-    if (!product) {
-      return next(new ErrorResponse('Review not found', 404));
-    }
+    if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    const review = product.reviews.id(req.params.id);
-
-    // Check ownership
-    if (review.user.toString() !== req.user.id) {
-      return next(new ErrorResponse('Not authorized', 401));
-    }
-
-    review.rating = req.body.rating || review.rating;
-    review.comment = req.body.comment || review.comment;
-
-    await product.save();
-    res.status(200).json({ success: true, data: review });
+    res.status(200).json({ reviews: product.reviews });
   } catch (err) {
-    next(new ErrorResponse(err.message, 500));
+    res.status(500).json({ message: err.message });
   }
 };
 
-// @desc    Delete review
-// @route   DELETE /api/v1/reviews/:id
-exports.deleteReview = async (req, res, next) => {
+// Add a review without auth
+exports.createReview = async (req, res) => {
   try {
-    const product = await Product.findOne({ 'reviews._id': req.params.id });
+    const { productId } = req.params;
+    const { name, rating, comment } = req.body;
 
-    if (!product) {
-      return next(new ErrorResponse('Review not found', 404));
-    }
+    // Check if product exists
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    const review = product.reviews.id(req.params.id);
+    // Create and save review
+    const review = new Review({
+      product: productId,
+      name: name || "Anonymous",
+      rating,
+      comment
+    });
+    await review.save();
 
-    // Check ownership or admin
-    if (review.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return next(new ErrorResponse('Not authorized', 401));
-    }
-
-    product.reviews.pull(req.params.id);
-    product.numOfReviews = product.reviews.length;
-
-    // Recalculate average
-    if (product.reviews.length > 0) {
-      product.ratings = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
-    } else {
-      product.ratings = 0;
-    }
-
+    // Optionally update product stats
+    const reviews = await Review.find({ product: productId });
+    product.numReviews = reviews.length;
+    product.rating = reviews.reduce((acc, r) => r.rating + acc, 0) / reviews.length;
     await product.save();
-    res.status(200).json({ success: true, data: {} });
+
+    res.status(201).json({ message: 'Review added', review });
   } catch (err) {
-    next(new ErrorResponse(err.message, 500));
+    res.status(500).json({ message: err.message });
   }
 };

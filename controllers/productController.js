@@ -10,6 +10,15 @@ exports.getProducts = async (req, res) => {
   }
 };
 
+exports.getTopProducts = async (req, res) => {
+  try {
+    const topProducts = await Product.find().sort({ rating: -1 }).limit(4);
+    res.status(200).json(topProducts);
+  } catch (err) {
+    console.error('Error fetching top products:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
 // Get single product
 exports.getProductById = async (req, res) => {
   try {
@@ -38,6 +47,7 @@ exports.createProduct = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
 
 // Update product
 exports.updateProduct = async (req, res) => {

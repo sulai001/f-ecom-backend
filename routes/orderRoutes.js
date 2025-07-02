@@ -7,8 +7,13 @@ const {
 } = require('../controllers/orderController');
 const { protect } = require('../middleware/auth');
 
-router.post('/', protect, createOrder);
-router.get('/:id', protect, getOrderById);
-router.get('/user/orders', protect, getUserOrders);
+// Create a new order
+router.post('/orders', createOrder);
+
+// Get order details by ID (with user, address, items, payment, notes)
+router.get('/orders/:id', getOrderById);
+
+// Get all orders for the logged-in user
+router.get('/user/orders', getUserOrders);
 
 module.exports = router;
